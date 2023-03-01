@@ -1,33 +1,92 @@
 import React, { useState, useEffect } from 'react';
-import io from 'socket.io-client';
-import GoogleMapReact from 'google-map-react';
+import axios from 'axios';
 
-
-const UserMarker = () => <div style={{color: 'red'}}>You are here!</div>;
-
-const RealTimeMap = () => {
-  const [location, setLocation] = useState({ lat: 37.7749, lng: -122.4194 });
+function LocationTracker() {
+  const [permission, setPermission] = useState(false);
+  const [location, setLocation] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
-    const socket = io('http://localhost:3000');
-    socket.on('location', (data) => {
-      setLocation({ lat: data.latitude, lng: data.longitude });
-    });
-  }, []);
+    if (permission) {
+      navigator.geolocation.watchPosition(
+        position => {
+          const { latitude, longitude } = position.coords;
+          setLocation({ latitude, longitude });
+          axios.post('/api/location', { latitude, longitude })
+            .catch(error => setError(error.message));
+        },
+        error => setError(error.message),
+        { enableHighAccuracy: true, maximumAge: 0, timeout: Infinity }
+      );
+    }
+  }, [permission]);
+
+  function handlePermission() {
+    navigator.permissions.query({ name: 'geolocation' }).then(result => {
+      if (result.state === 'granted') {
+        setPermission(true);
+      } else if (result.state === 'denied') {
+        setError('You have denied location access.');
+      } else if (result.state === 'prompt') {
+        setError('Please grant location access to use this feature.');
+      }
+    }).catch(error => setError(error.message));
+
+    // Load the Google Maps API with a callback function
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=AIzaSyC2kkIP27_L5pzjvLHiXp_8YlEDlQtqLiw&callback=initMap`;
+    script.defer = true;
+    script.async = true;
+    document.head.appendChild(script);
+
+    // Define the callback function to initialize the map
+    window.initMap = () => {
+      if (location) {
+        const { latitude, longitude } = location;
+
+        const map = new window.google.maps.Map(document.getElementById('map'), {
+          center: { lat: latitude, lng: longitude },
+          zoom: 14,
+        });
+
+        const marker = new window.google.maps.Marker({
+          position: { lat: latitude, lng: longitude },
+          map: map,
+          title: 'My Location'
+        });
+      }
+    };
+
+    // Cleanup the script tag and the initMap function
+    return () => {
+      document.head.removeChild(script);
+      delete window.initMap;
+    };
+  }
 
   return (
-    <div style={{ height: '500px', width: '800px' }}>
-      <GoogleMapReact
-  bootstrapURLKeys={{
-    key: process.env.REACT_APP_GOOGLE_MAPS_API_KEY}}
-         defaultCenter={{ lat: 37.7749, lng: -122.4194 }}
-        defaultZoom={13}
-        center={location}
-      >
-        <UserMarker lat={location.lat} lng={location.lng} />
-      </GoogleMapReact>
+    <div>
+      {location ?
+        <div>
+          <h1>My Location:</h1>
+          <p>Latitude: {location.latitude}</p>
+          <p>Longitude: {location.longitude}</p>
+          <div id="map" style={{ height: '400px', width: '100%' }}></div>
+        </div> :
+        permission ?
+          error ?
+            <div>
+              <p>{error}</p>
+              <button onClick={() => setError(null)}>Try Again</button>
+            </div> :
+            <div>
+              <h1>Tracking Location...</h1>
+              <div id="map" style={{ height: '400px', width: '100%' }}></div>
+            </div> :
+          <button onClick={handlePermission}>Enable Location Tracking</button>
+      }
     </div>
   );
-};
+}
 
-export default RealTimeMap;
+export default LocationTracker;
