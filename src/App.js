@@ -74,6 +74,7 @@ function LocationTracker() {
           <div id="map" style={{ height: '400px', width: '100%' }}></div>
         </div> :
         permission ?
+        //test
           error ?
             <div>
               <p>{error}</p>
